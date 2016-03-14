@@ -1,0 +1,33 @@
+
+
+//rough skeleton of function to do multiplication
+void teamMatMul(struct complex ** A, struct complex ** B, struct complex ** C, int a_dim1, int a_dim2, int b_dim2)
+{
+
+   
+
+ int i,j,n;
+  struct complex sumProds;
+  #pragma omp for 
+	for(i=0;i<a_dim1;i++){
+
+
+     for(j=0;j<b_dim2;j++){
+
+        
+        for(n=0;n<a_rowSize;n+=2){
+
+            C[i][j]= complexMul(sseA[n],sseB[n])
+
+        }
+
+
+     }
+
+
+
+	}
+     
+
+
+}
