@@ -17,7 +17,7 @@ struct complex {
 struct complex ** A;
 struct complex ** B;
 
-void Dot(__m128 *sseArrayA,__m128 *sseArrayB,struct complex sum,int b_cols,int a_rows,int a_cols,int b_row){
+struct complex Dot(__m128 *sseArrayA,__m128 *sseArrayB,int b_cols,int a_rows,int a_cols,int b_row){
 	struct complex tmp,aC,bC;
 	float ar,br,ai,bi;
 	__m128 a, b,c, d,axb,cxd,bxa,dxc,subReal,addImg,resComp;
@@ -69,4 +69,5 @@ void Dot(__m128 *sseArrayA,__m128 *sseArrayB,struct complex sum,int b_cols,int a
       	}
   		}
 	}
+	return sum;
  }
