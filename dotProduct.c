@@ -17,17 +17,17 @@ struct complex {
 struct complex ** A;
 struct complex ** B;
 
-void Dot(__m128 *sseArrayA,__m128 *sseArrayB,struct complex sum,int i_max,int j_max,int k_max,int b_row){
+void Dot(__m128 *sseArrayA,__m128 *sseArrayB,struct complex sum,int b_cols,int a_rows,int a_cols,int b_row){
 	struct complex tmp,aC,bC;
 	float ar,br,ai,bi;
 	__m128 a, b,c, d,axb,cxd,bxa,dxc,subReal,addImg,resComp;
 	int k,i,j;
 	// iterate over a_rows
-	for (j=0;j<j_max;j++){
+	for (j=0;j<a_rows;j++){
 	// iterate over b_columns
-	for (i=0;i<i_max;i++){
+	for (i=0;i<b_cols;i++){
 		//iterate over col and rows
-		for(k=0;k<(k_max-4);k+4){
+		for(k=0;k<(a_cols-4);k+4){
 		// load from sseArrays the 4 values to be calculated so that each sse vector:
 		// a = [complex real,complex img , complex real 1, complex img 1]
 		 a = sseArrayA[k]; c = sseArrayA[k+1];
