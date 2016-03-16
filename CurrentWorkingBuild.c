@@ -154,38 +154,68 @@ void matmul(struct complex ** A, struct complex ** B, struct complex ** C, int a
   }
 }
 
-/* the fast version of matmul written by the team */
+/* 
+  ---------------------------------------------------------------------------------------------
+  mul_row_column
+  ---------------------------------------------------------------------------------------------
+  Multiplies row by column and returns the result in a struct complex
 
+  Input matrices are found in two SSE arrays: sseA, sseB
+
+  The SSE arrays will be received alongside an index: indexA, indexB
+  Specific complex numbers can be accessed by adding an offset (n) to the index
+  where sseA[indexA + n] is the nth complex number in A's row
+    and sseB[indexB + n] is the nth complex number in B's column (by virtue of how sseB is populated)
+
+  Each complex number will be found in this form:
+        sseA[indexA + n]   -->   |  A.r  |  A.i  |  A.r  |  A.i  |
+        sseB[indexB + n]   -->   |  B.r  |(-)B.i |  B.i  |  B.r  |
+
+  Note:
+  1.  Each real and each imaginary are stored twice, in a prticular order.
+  2.  The second element of sseB[indexB + n] is negated.
+  These properties allow us to perform a single vector multiplication for each complex number
+  Giving us:
+        temp               -->   |  t.r1  |  t.r2  |  t.i1  |  t.i2  |
+
+  We can just parallel add temp to our running sum each time until we have finished.
+  Then we horizontal add our finished sum to combine the real parts and the imaginary parts.
+
+        sum                -->   |  s.r  |  s.i  |  s.r  |  s.i  |
+
+  We end up with some duplicate values at the end, 
+  but we can ignore those and extract our complex number
+  from the first two places in the final __m128 sum
+
+  ---------------------------------------------------------------------------------------------
+ */
 struct complex mul_row_column(__m128 * sseA, __m128 * sseB, int indexA, int indexB, int length) 
 {
-  //omp_lock_t writelock;
-  //omp_init_lock(&writelock);
-  
+
   __m128 sum = _mm_set_ps(0,0,0,0);
+  
   int n;
-  //#pragma omp parallel for private(n)  
   for(n = 0; n < length; n++){
     __m128 temp;
     temp = _mm_mul_ps( sseA[indexA + n], sseB[indexB + n] );
-  
-    
-    //omp_set_lock(&writelock);
     sum = _mm_add_ps(sum, temp);
-    //omp_unset_lock(&writelock);
   }
- 
+
+  //Combine real parts and imaginary parts
   sum = _mm_hadd_ps(sum, sum);
-  struct complex tmp;
-  _mm_storel_pi((__m64*) &tmp, sum);
-  // printf("tmp.real = %f  \n", tmp.real);
-  // printf("tmp.imag = %f  \n", tmp.imag);
-  float temporaryFloat = tmp.real;
-  tmp.real =  tmp.imag;
-  tmp.imag = temporaryFloat;
-  return tmp;
+
+  //Extract complex number from __m128 sum
+  struct complex result;
+  _mm_storel_pi((__m64*) &result, sum);
+
+  //real and imag parts are in the wrong place after _mm_storel_pi
+  //So we need to swap them;
+  float temporaryFloat = result.real;
+  result.real =  result.imag;
+  result.imag = temporaryFloat;
+  return result;
 
 }
-
 
 
 void team_matmul(struct complex ** A, struct complex ** B, struct complex ** C, int a_rows, int a_cols, int b_cols)
@@ -196,7 +226,6 @@ void team_matmul(struct complex ** A, struct complex ** B, struct complex ** C, 
     We'll start by allocating the memory we need.
     We will need 4 floats per complex number
     in order to multiply in one instruction.
-
     We will allocate space for an SSE Array representing both A and B
   */
 
@@ -210,19 +239,18 @@ void team_matmul(struct complex ** A, struct complex ** B, struct complex ** C, 
   
   //We declare the float array, then align it to 16 bytes, then cast it to __m128
   float *floatsA;
-    posix_memalign((void**)&floatsA, 16,  ELEMENTS_NEEDED_A * sizeof(float));
+  posix_memalign((void**)&floatsA, 16,  ELEMENTS_NEEDED_A * sizeof(float));
   __m128 *sseA = (__m128*) floatsA;
   //Both arrays (float and __m128) point to the same data!
 
   float *floatsB;
-    posix_memalign((void**)&floatsB, 16,  ELEMENTS_NEEDED_B * sizeof(float));
+  posix_memalign((void**)&floatsB, 16,  ELEMENTS_NEEDED_B * sizeof(float));
   __m128 *sseB = (__m128*) floatsB;
   
   /*
      Initialise sseArray
     ---------------------
     We will take this opportunity to populate our SSE Arrays with values from A and B
-
     The following is where the SSE Array Indices will point
     
     A:
@@ -230,7 +258,6 @@ void team_matmul(struct complex ** A, struct complex ** B, struct complex ** C, 
       [ 4   5   6   7   ]
       [ 8   9   10  11  ]
       [ 12  13  14  15  ]
-
     B:
       [ 0   4   8   12  ]
       [ 1   5   9   13  ]
@@ -246,32 +273,23 @@ void team_matmul(struct complex ** A, struct complex ** B, struct complex ** C, 
       for (n = 0; n < row_column_length; n++)
         product = A[n] * B[n]
   */
-
-  //Should be able to do these at the same time    
-
-  //Set SSE array A
-
-  int i, j;
+ 
+  
+  //Set SSE array A		
   int indexA = 0;
-  //#pragma omp parallel for private(i, j) //collapse(2)
-  for (i = 0; i < a_rows; i++){
-    for (j = 0; j < a_cols; j++){
-      //must calculate index if using parallelism
-      //int indexA = i * a_rows + j;
+  for (int i = 0; i < a_rows; i++){
+    for (int j = 0; j < a_cols; j++){
       sseA[indexA] = _mm_set_ps( A[i][j].real, A[i][j].imag, A[i][j].real, A[i][j].imag );
       indexA++;
     }
   }
   
-  //Set SSE array B
+	//Set SSE array B
   int indexB = 0;
-  //#pragma omp parallel for private(i, j) //collapse(2)
-  for (j = 0; j < b_cols; j++){
-    for (i = 0; i < a_cols; i++){
-      //must calculate index because of parallelism
-      //int indexB = j * b_cols + i;
+  for (int j = 0; j < b_cols; j++){
+    for (int i = 0; i < a_cols; i++){
       sseB[indexB] = _mm_set_ps( B[i][j].real, -B[i][j].imag, B[i][j].imag, B[i][j].real );
-      indexB++;
+		  indexB++;
     }
   }
   
@@ -279,9 +297,7 @@ void team_matmul(struct complex ** A, struct complex ** B, struct complex ** C, 
          Multiply Matrices
       -----------------------
       Now that the matrices are loaded into SSE arrays,
-      we can set about multiplying them.
-      
-      We 
+      we can set about multiplying them. 
      
       Note:
       for all i in C_columns
@@ -298,26 +314,27 @@ void team_matmul(struct complex ** A, struct complex ** B, struct complex ** C, 
       A 'threshold of worth' for each dimension was found
       that is used to decide whether to set up threads or not.
       These thresholds are specific to Stoker.
-
   */
   
   //The following are the minimum dimensions of Input Matrices where using 
   //  #pragma omp parallel for 
   //gives a speedup
+  
   //outerMin -> Approximate minimum value for a_rows and b_cols
   int outerMin = 50;
 
   //innerMin -> Approximate minimum value for a_cols
   int innerMin = 5;  
-
+  
+  int i, j; //need to declare these outside omp for
   #pragma omp parallel for private(i, j) collapse(2) if(a_rows > outerMin && b_cols > outerMin && a_cols > innerMin)
   for(i=0;i<a_rows;i++){
     for(j=0;j<b_cols;j++){
         C[i][j] = mul_row_column(sseA, sseB, i * a_cols, j * a_cols, a_cols);
-
     }
   } 
 }
+
 
 long long time_diff(struct timeval * start, struct timeval * end) {
   return (end->tv_sec - start->tv_sec) * 1000000L + (end->tv_usec - start->tv_usec);
@@ -403,4 +420,3 @@ int main(int argc, char ** argv)
 
   return 0;
 }
-
