@@ -251,7 +251,7 @@ void team_matmul(struct complex ** A, struct complex ** B, struct complex ** C, 
      Initialise sseArray
     ---------------------
     We will take this opportunity to populate our SSE Arrays with values from A and B
-    The following is where the SSE Array Indices will point
+    The numbers show where the SSE Array Indices will point:
     
     A:
       [ 0   1   2   3   ]
@@ -274,7 +274,6 @@ void team_matmul(struct complex ** A, struct complex ** B, struct complex ** C, 
         product = A[n] * B[n]
   */
  
-  
   //Set SSE array A		
   int indexA = 0;
   for (int i = 0; i < a_rows; i++){
@@ -284,7 +283,7 @@ void team_matmul(struct complex ** A, struct complex ** B, struct complex ** C, 
     }
   }
   
-	//Set SSE array B
+	//Set SSE array B, NOTE: i and j are SWAPPED!
   int indexB = 0;
   for (int j = 0; j < b_cols; j++){
     for (int i = 0; i < a_cols; i++){
