@@ -155,11 +155,6 @@ void matmul(struct complex ** A, struct complex ** B, struct complex ** C, int a
 }
 
 /* the fast version of matmul written by the team */
-/*
-void team_matmul(struct complex ** A, struct complex ** B, struct complex ** C, int a_rows, int a_cols, int b_cols) {
-  
-}
-*/
 
 struct complex mul_row_column(__m128 * sseA, __m128 * sseB, int indexA, int indexB, int length) 
 {
@@ -178,10 +173,7 @@ struct complex mul_row_column(__m128 * sseA, __m128 * sseB, int indexA, int inde
     sum = _mm_add_ps(sum, temp);
     //omp_unset_lock(&writelock);
   }
-  
-
-
-
+ 
   sum = _mm_hadd_ps(sum, sum);
   struct complex tmp;
   _mm_storel_pi((__m64*) &tmp, sum);
@@ -264,7 +256,7 @@ void team_matmul(struct complex ** A, struct complex ** B, struct complex ** C, 
   //#pragma omp parallel for private(i, j) //collapse(2)
   for (i = 0; i < a_rows; i++){
     for (j = 0; j < a_cols; j++){
-      //must calculate index because of parallelism
+      //must calculate index if using parallelism
       //int indexA = i * a_rows + j;
       sseA[indexA] = _mm_set_ps( A[i][j].real, A[i][j].imag, A[i][j].real, A[i][j].imag );
       indexA++;
@@ -282,9 +274,43 @@ void team_matmul(struct complex ** A, struct complex ** B, struct complex ** C, 
       indexB++;
     }
   }
-
   
-  #pragma omp parallel for private(i, j) collapse(2)
+  /*
+         Multiply Matrices
+      -----------------------
+      Now that the matrices are loaded into SSE arrays,
+      we can set about multiplying them.
+      
+      We 
+     
+      Note:
+      for all i in C_columns
+         for all j in C_rows
+            C[i][j] is independant of C[x][y] for all x != i and y != j
+      
+      Because of this independance, we can iterate through C using a parallel for.
+      
+      The catch is:
+      for very narrow matrices, 
+      the time spent setting up threads 
+      is more than the time multithreaded parallelism can save.
+      
+      A 'threshold of worth' for each dimension was found
+      that is used to decide whether to set up threads or not.
+      These thresholds are specific to Stoker.
+
+  */
+  
+  //The following are the minimum dimensions of Input Matrices where using 
+  //  #pragma omp parallel for 
+  //gives a speedup
+  //outerMin -> Approximate minimum value for a_rows and b_cols
+  int outerMin = 50;
+
+  //innerMin -> Approximate minimum value for a_cols
+  int innerMin = 5;  
+
+  #pragma omp parallel for private(i, j) collapse(2) if(a_rows > outerMin && b_cols > outerMin && a_cols > innerMin)
   for(i=0;i<a_rows;i++){
     for(j=0;j<b_cols;j++){
         C[i][j] = mul_row_column(sseA, sseB, i * a_cols, j * a_cols, a_cols);
@@ -377,3 +403,4 @@ int main(int argc, char ** argv)
 
   return 0;
 }
+
